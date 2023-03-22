@@ -1,13 +1,11 @@
 FROM alpine:3.15
 
-MAINTAINER Kamran Azeem & Henrik Høegh (kamranazeem@gmail.com, henrikrhoegh@gmail.com)
-
-EXPOSE 80 443 1180 11443
+EXPOSE 22 80 443 1180 11443
 
 # Install some tools in the container and generate self-signed SSL certificates.
 # Packages are listed in alphabetical order, for ease of readability and ease of maintenance.
 RUN     apk update \
-    &&  apk add bash bind-tools busybox-extras curl \
+    &&  apk add dropbear bash bind-tools busybox-extras curl \
                 iproute2 iputils jq mtr \
                 net-tools nginx openssl \
                 perl-net-telnet procps tcpdump tcptraceroute wget \
@@ -17,6 +15,10 @@ RUN     apk update \
         -x509 -newkey rsa:2048 -nodes -days 3650 \
         -keyout /certs/server.key -out /certs/server.crt -subj '/CN=localhost'
 
+###
+# set a password to SSH into the docker container with
+RUN echo 'root:alpine' | chpasswd
+###
 
 # Copy a simple index.html to eliminate text (index.html) noise which comes with default nginx image.
 # (I created an issue for this purpose here: https://github.com/nginxinc/docker-nginx/issues/234)
@@ -34,7 +36,7 @@ COPY nginx.conf /etc/nginx/nginx.conf
 COPY entrypoint.sh /docker/entrypoint.sh
 
 
-# Start nginx in foreground:
+# Start nginx in foreground (pass CMD to docker entrypoint.sh):
 CMD ["/usr/sbin/nginx", "-g", "daemon off;"]
 
 
@@ -54,30 +56,41 @@ ENTRYPOINT ["/bin/sh", "/docker/entrypoint.sh"]
 
 ###################################################################################################
 
-# Build and Push (to dockerhub) instructions:
+# Build in local docker environment (for testing) instructions:
 # -------------------------------------------
 # docker build -t local/network-multitool .
-# docker tag local/network-multitool praqma/network-multitool
-# docker login
-# docker push praqma/network-multitool
+# docker run --name test_multitool_sshd -d local/network-multitool
+# docker exec -it test_multitool_sshd /bin/bash
+# or
+# ssh admin@172.17.0.2 #IP address may/will vary in your environment
 
 
-# Pull (from dockerhub):
+# Pushing to GHCR
+# -------------------------------------------
+# docker build -t local/network-multitool .
+# export CR_PAT=YOUR_TOKEN <PAT Generated from github UI>
+# echo $CR_PAT | docker login ghcr.io -u USERNAME --password-stdin
+# # await > Login Succeeded
+# docker push ghcr.io/aturnal/network-multitool:latest
+# docker push aturnal/network-multitool
+
+
+# Pull (from ghcr):
 # ----------------------
-# docker pull praqma/network-multitool
+# docker pull ghcr.io/aturnal/network-multitool
 
 
 # Usage - on Docker:
 # ------------------
-# docker run --rm -it praqma/network-multitool /bin/bash 
+# docker run --rm -it aturnal/network-multitool /bin/bash 
 # OR
-# docker run -d  praqma/network-multitool
+# docker run -d  aturnal/network-multitool
 # OR
-# docker run -p 80:80 -p 443:443 -d  praqma/network-multitool
+# docker run -p 22:22 -p 80:80 -p 443:443 -d  aturnal/network-multitool
 # OR
-# docker run -e HTTP_PORT=1180 -e HTTPS_PORT=11443 -p 1180:1180 -p 11443:11443 -d  praqma/network-multitool
+# docker run -e SSH_PORT=22 -e HTTP_PORT=1180 -e HTTPS_PORT=11443 -p 1180:1180 -p 11443:11443 -d  aturnal/network-multitool
 
 
 # Usage - on Kubernetes:
 # ---------------------
-# kubectl run multitool --image=praqma/network-multitool
+# kubectl run multitool --image=aturnal/network-multitool
